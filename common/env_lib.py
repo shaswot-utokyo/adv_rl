@@ -1015,7 +1015,7 @@ class sparse_v0_T120_1x(eno_v0_T120): # 1 reward per day, 120 timesteps per day
 # End of sparse_v0_T120_1x
 ########################################################
 ########################################################
-class sparse_v0_T240_4x(eno_v0):  # 3 rewards per day,240 timesteps per day
+class sparse_v0_T240_4x(eno_v0_T240):  # 3 rewards per day,240 timesteps per day
     def reward(self,action): # sparse rewards at particular time intervals
         end_time = self.env_timeslot_values[-1]
         half_time = self.env_timeslot_values[int(2*len(self.env_timeslot_values)/4)]

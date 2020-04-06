@@ -175,19 +175,19 @@ class utility_generator(object): # generates utility of data, dependent on time
         return np.clip(utility,0,1 )
 # End of utility_generator class
 ########################################################
+########################################################
 class night_utility_generator(object): # generates utility of data, dependent on time
     def __init__(self):
         pass    
     def get_utility(self, time):
         assert 0<=time<24, 'Invalid time'
         if 0<=time<6 or 18<time<24:
-            utility = 0.8
+            utility = 1.0
         else:
-            utility = 0.2
-        return np.clip(utility,0.1,1 )
+            utility = 0.1
+        return utility
 # End of utility_generator class
 ########################################################
-
 ########################################################
 # Class for channel fading
 ########################################################
@@ -230,17 +230,19 @@ class battery(object):
 
 
 
-
+########################################################
 # Environments with UTILITY
 ########################################################
-# utility_v0: environment template
+# utility_v0_T240: environment template
+# HFACTOR = 0.01   
+# DFACTOR = 0.005 
 ########################################################
-class utility_v0(gym.Env):
+class utility_v0_T240(gym.Env):
     """An ambient environment simulator for OpenAI gym."""
     metadata = {'render.modes': ['human']}
     
     def __init__(self):
-        super(utility_v0, self).__init__()
+        super(utility_v0_T240, self).__init__()
         
         # Actions = 10 discrete duty cycles
         self.NO_OF_DUTY_CYCLES = 10
@@ -249,13 +251,13 @@ class utility_v0(gym.Env):
         # Observation = [time, h_energy, p_energy, b_energy, utility]
         self.observation_space = spaces.Box(low=0, 
                                             high=1, 
-                                            shape=(5,))
+                                            shape=(5,)) #<<<<<<<<<
         
         self.MIN_BATT = 0.1
         self.MIN_DC = 1/self.NO_OF_DUTY_CYCLES # Minimum duty cycle
 
-        self.HFACTOR = 0.02 
-        self.DFACTOR = 0.01 
+        self.HFACTOR = 0.01 
+        self.DFACTOR = 0.005 
         
 
     def reset(self, location, year, LOG_DATA=True):
@@ -298,7 +300,7 @@ class utility_v0(gym.Env):
         self.henergy_obs = None
         self.penergy_obs = None
         self.benergy_obs = None
-        self.utility_obs = None
+        self.utility_obs = None #<<<<<<<<<
         
         # Environment Flags
         self.RECOVERY_MODE = False # battery is recovering to BINIT from complete discharge & node is suspended
@@ -307,13 +309,13 @@ class utility_v0(gym.Env):
         # Get observation
         self.time_obs, self.henergy_obs, self.penergy_obs, DAY_END, HARVESTER_END = self.env_harvester.step()
         self.benergy_obs = self.env_battery.get_batt_state()
-        self.utility_obs = self.utility_gen.get_utility(self.time_obs)
+        self.utility_obs = self.utility_gen.get_utility(self.time_obs) #<<<<<<<<<<
         
         self.obs = (self.time_obs/self.READINGS_PER_DAY, 
                     self.henergy_obs, 
                     self.penergy_obs, 
                     self.benergy_obs,
-                    self.utility_obs)
+                    self.utility_obs) #<<<<<<<<
         if self.LOG_DATA:
             self.env_log.append(self.obs)
         return np.array(self.obs)
@@ -379,11 +381,10 @@ class utility_v0(gym.Env):
     def next_obs(self): # update all observations
 
         self.time_obs, self.henergy_obs, self.penergy_obs, DAY_END, HARVESTER_END = self.env_harvester.step()
-        
-        self.benergy_obs = self.env_battery.get_batt_state() # updated battery observation
-        self.utility_obs = self.utility_gen.get_utility(self.time_obs) # new utility observation
+        self.utility_obs = self.utility_gen.get_utility(self.time_obs) # new utility observation #<<<<<<<<<<<<
 
         if not HARVESTER_END:
+            self.benergy_obs = self.env_battery.get_batt_state() # updated battery observation
             if self.RECOVERY_MODE:
                 if self.benergy_obs > self.BINIT: 
                     self.RECOVERY_MODE = False # snap out of recovery mode
@@ -394,7 +395,7 @@ class utility_v0(gym.Env):
                     self.henergy_obs, 
                     self.penergy_obs, 
                     self.benergy_obs,
-                    self.utility_obs)
+                    self.utility_obs) #<<<<<<<<<<<<<
         
         if self.LOG_DATA:
             self.env_log.append(self.obs)
@@ -403,41 +404,210 @@ class utility_v0(gym.Env):
 
         return self.obs, done
     
-    def reward(self,action): # reward based on utility
+    def reward(self,action): # reward based on utility #<<<<<<<<<<
         if self.RECOVERY_MODE:
             return -1 # penalize recovery mode
         else:
             sense_dc = action/self.NO_OF_DUTY_CYCLES + self.MIN_DC
-            del_qos = self.utility_obs - sense_dc
-            if del_qos <= 0:
+            if sense_dc >= self.utility_obs:
                 return self.utility_obs
             else:
-                return 1-del_qos/0.9
-    # End of utility_v0
+                return sense_dc *0.5
+    # End of utility_v0_T240
 ########################################################
 ########################################################
-class utility_v1(utility_v0):
-    def reward(self,action): # reward based on utility
-        if self.RECOVERY_MODE:
-            return -1 # penalize recovery mode
-        else:
-            sense_dc = action/self.NO_OF_DUTY_CYCLES + self.MIN_DC
-            return np.clip(2*sense_dc/self.utility_obs, 0,1)
-# End of utility_v1
+# Different timesteps per day for utility_v0_T240 env
 ########################################################
-
-
-
-# Base Environments
+#
 ########################################################
-# eno_v0: environment template
 ########################################################
-class eno_v0(gym.Env):
+class utility_v0_T120(utility_v0_T240):
     """An ambient environment simulator for OpenAI gym."""
     metadata = {'render.modes': ['human']}
     
     def __init__(self):
-        super(eno_v0, self).__init__()
+        super(utility_v0_T120, self).__init__()
+        
+        # Actions = 10 discrete duty cycles
+        self.NO_OF_DUTY_CYCLES = 10
+        self.action_space = spaces.Discrete(n=self.NO_OF_DUTY_CYCLES)
+
+        # Observation = [time, h_energy, p_energy, b_energy, utility]
+        self.observation_space = spaces.Box(low=0, 
+                                            high=1, 
+                                            shape=(5,)) #<<<<<<<<<
+        
+        self.MIN_BATT = 0.1
+        self.MIN_DC = 1/self.NO_OF_DUTY_CYCLES # Minimum duty cycle
+
+        self.HFACTOR = 0.01*240/120 #<<<<<<<
+        self.DFACTOR = 0.005*240/120 #<<<<<<<
+        
+
+    def reset(self, location, year, LOG_DATA=True):
+
+        # Characterize the harvester
+        self.READINGS_PER_DAY = 24
+        REQ_TIMESLOTS_PER_DAY = 120 #<<<<<<<<<<
+        PREDICTION_HORIZON=120 #<<<<<<<<<<
+        
+
+        self.env_harvester = csv_solar_harvester(location=location,
+                                year=year,
+                                READINGS_PER_DAY = self.READINGS_PER_DAY,
+                                SMAX=4.0, # Max GSR
+                                HENERGY_NOISE=0.1, # henergy artifical noise
+                                NORMALIZED_HMIN_THRES=1E-5, # henergy cutoff
+                                REQ_TIMESLOTS_PER_DAY=REQ_TIMESLOTS_PER_DAY, # no. of timeslots per day
+                                PREDICTION_HORIZON=PREDICTION_HORIZON, # lookahead horizon to predict energy
+                                PENERGY_NOISE=0.005)
+        self.env_timeslot_values = self.env_harvester.time_slots
+        self.ENV_LIFETIME = self.env_harvester.no_of_days
+        
+        # Characterize the battery
+        self.BINIT = 0.7
+        self.BEFF  = 1.0
+        self.env_battery = battery(self.BINIT,self.BEFF)
+
+        # Characterize utility generator
+        self.utility_gen = night_utility_generator()
+        # Characterize channel fading
+        
+        # Data logging variables
+        self.LOG_DATA = LOG_DATA # Flag to whether or not log data
+        self.env_log = [] # record all values in the environment
+        self.action_log = [] # record all actions sent to the environment
+        self.eno_log = []
+        
+        # Observation variables
+        self.time_obs = None
+        self.henergy_obs = None
+        self.penergy_obs = None
+        self.benergy_obs = None
+        self.utility_obs = None #<<<<<<<<<
+        
+        # Environment Flags
+        self.RECOVERY_MODE = False # battery is recovering to BINIT from complete discharge & node is suspended
+        
+
+        # Get observation
+        self.time_obs, self.henergy_obs, self.penergy_obs, DAY_END, HARVESTER_END = self.env_harvester.step()
+        self.benergy_obs = self.env_battery.get_batt_state()
+        self.utility_obs = self.utility_gen.get_utility(self.time_obs) #<<<<<<<<<<
+        
+        self.obs = (self.time_obs/self.READINGS_PER_DAY, 
+                    self.henergy_obs, 
+                    self.penergy_obs, 
+                    self.benergy_obs,
+                    self.utility_obs) #<<<<<<<<
+        if self.LOG_DATA:
+            self.env_log.append(self.obs)
+        return np.array(self.obs)
+
+# End of utility_v0_T120
+########################################################
+########################################################
+class utility_v0_T24(utility_v0_T240):
+    """An ambient environment simulator for OpenAI gym."""
+    metadata = {'render.modes': ['human']}
+    
+    def __init__(self):
+        super(utility_v0_T24, self).__init__()
+        
+        # Actions = 10 discrete duty cycles
+        self.NO_OF_DUTY_CYCLES = 10
+        self.action_space = spaces.Discrete(n=self.NO_OF_DUTY_CYCLES)
+
+        # Observation = [time, h_energy, p_energy, b_energy, utility]
+        self.observation_space = spaces.Box(low=0, 
+                                            high=1, 
+                                            shape=(5,)) #<<<<<<<<<
+        
+        self.MIN_BATT = 0.1
+        self.MIN_DC = 1/self.NO_OF_DUTY_CYCLES # Minimum duty cycle
+
+        self.HFACTOR = 0.01*240/24 #<<<<<<<
+        self.DFACTOR = 0.005*240/24 #<<<<<<<
+        
+
+    def reset(self, location, year, LOG_DATA=True):
+
+        # Characterize the harvester
+        self.READINGS_PER_DAY = 24
+        REQ_TIMESLOTS_PER_DAY = 24 #<<<<<<<<<<
+        PREDICTION_HORIZON=24 #<<<<<<<<<<
+        
+
+        self.env_harvester = csv_solar_harvester(location=location,
+                                year=year,
+                                READINGS_PER_DAY = self.READINGS_PER_DAY,
+                                SMAX=4.0, # Max GSR
+                                HENERGY_NOISE=0.1, # henergy artifical noise
+                                NORMALIZED_HMIN_THRES=1E-5, # henergy cutoff
+                                REQ_TIMESLOTS_PER_DAY=REQ_TIMESLOTS_PER_DAY, # no. of timeslots per day
+                                PREDICTION_HORIZON=PREDICTION_HORIZON, # lookahead horizon to predict energy
+                                PENERGY_NOISE=0.005)
+        self.env_timeslot_values = self.env_harvester.time_slots
+        self.ENV_LIFETIME = self.env_harvester.no_of_days
+        
+        # Characterize the battery
+        self.BINIT = 0.7
+        self.BEFF  = 1.0
+        self.env_battery = battery(self.BINIT,self.BEFF)
+
+        # Characterize utility generator
+        self.utility_gen = night_utility_generator()
+        # Characterize channel fading
+        
+        # Data logging variables
+        self.LOG_DATA = LOG_DATA # Flag to whether or not log data
+        self.env_log = [] # record all values in the environment
+        self.action_log = [] # record all actions sent to the environment
+        self.eno_log = []
+        
+        # Observation variables
+        self.time_obs = None
+        self.henergy_obs = None
+        self.penergy_obs = None
+        self.benergy_obs = None
+        self.utility_obs = None #<<<<<<<<<
+        
+        # Environment Flags
+        self.RECOVERY_MODE = False # battery is recovering to BINIT from complete discharge & node is suspended
+        
+
+        # Get observation
+        self.time_obs, self.henergy_obs, self.penergy_obs, DAY_END, HARVESTER_END = self.env_harvester.step()
+        self.benergy_obs = self.env_battery.get_batt_state()
+        self.utility_obs = self.utility_gen.get_utility(self.time_obs) #<<<<<<<<<<
+        
+        self.obs = (self.time_obs/self.READINGS_PER_DAY, 
+                    self.henergy_obs, 
+                    self.penergy_obs, 
+                    self.benergy_obs,
+                    self.utility_obs) #<<<<<<<<
+        if self.LOG_DATA:
+            self.env_log.append(self.obs)
+        return np.array(self.obs)
+
+# End of utility_v0_T24
+########################################################
+
+
+
+########################################################
+# Environments with only ENO
+########################################################
+# eno_v0_T240: environment template
+# HFACTOR = 0.01   
+# DFACTOR = 0.005 
+########################################################
+class eno_v0_T240(gym.Env):
+    """An ambient environment simulator for OpenAI gym."""
+    metadata = {'render.modes': ['human']}
+    
+    def __init__(self):
+        super(eno_v0_T240, self).__init__()
         
         # Actions = 10 discrete duty cycles
         self.NO_OF_DUTY_CYCLES = 10
@@ -451,11 +621,8 @@ class eno_v0(gym.Env):
         self.MIN_BATT = 0.1
         self.MIN_DC = 1/self.NO_OF_DUTY_CYCLES # Minimum duty cycle
 
-        
-#         self.HFACTOR = 0.01 # Default
-#         self.DFACTOR = 0.005 # Default
-        self.HFACTOR = 0.02 
-        self.DFACTOR = 0.01 
+        self.HFACTOR = 0.01 
+        self.DFACTOR = 0.005 
         
 
     def reset(self, location, year, LOG_DATA=True):
@@ -602,82 +769,169 @@ class eno_v0(gym.Env):
             return -1 # penalize recovery mode
         else:
             return (0.5 - np.abs(self.benergy_obs - 0.5))*4 - 1
-    # End of eno_v0
-########################################################
-class eno_v0_g99(eno_v0): # for gamma=0.99
-    def reward(self,action): # symmetric linear reward
-        if self.RECOVERY_MODE:
-            return -1 # penalize recovery mode
-        else:
-            return ((0.5 - np.abs(self.benergy_obs - 0.5))*4 - 1)*0.1
-# End of eno_v0_g99
+    # End of eno_v0_T240
 ########################################################
 ########################################################
-class eno_v0_g999(eno_v0): # for gamma=0.99
-    def reward(self,action): # symmetric linear reward
-        if self.RECOVERY_MODE:
-            return -1 # penalize recovery mode
-        else:
-            return ((0.5 - np.abs(self.benergy_obs - 0.5))*4 - 1)*0.01
-# End of eno_v0_g999
+# Different timesteps perday for eno_v0_T240 env
 ########################################################
 ########################################################
-class eno_v0_g999a(eno_v0): # for gamma=0.99
-    def reward(self,action): # symmetric linear reward
-        if self.RECOVERY_MODE:
-            return -1 # penalize recovery mode
-        else:
-            return ((0.5 - np.abs(self.benergy_obs - 0.5))*4 - 1)*0.1
-# End of eno_v0_g999a
-########################################################
-########################################################
-class sparse_v0a(eno_v0):
-    def reward(self,action): # sparse rewards at particular time intervals
-        end_time = self.env_timeslot_values[-1]
-        half_time = self.env_timeslot_values[int(2*len(self.env_timeslot_values)/4)]
-        q1_time = self.env_timeslot_values[int(len(self.env_timeslot_values)/4)]
-        q3_time = self.env_timeslot_values[int(3*len(self.env_timeslot_values)/4)]
-        interval_set = set((end_time))
-        if self.RECOVERY_MODE:
-            return -1 # penalize recovery mode
+class eno_v0_T120(eno_v0_T240): # 120 timesteps in one day
+    def __init__(self):
+        super(eno_v0_T120, self).__init__()
         
-        if self.time_obs in interval_set:
-            batt_log = [obs[3] for obs in self.env_log]
-            mean_day_batt = np.mean(batt_log[-len(self.env_timeslot_values):-1])
-            lowthreshold = 2*self.MIN_BATT
-            if lowthreshold<mean_day_batt<(1-lowthreshold):
-                return 1
-            else:
-                return -1
-        else:
-            return 0
-# End of sparse_v0a
-########################################################
-########################################################
-class sparse_v0b(eno_v0):
-    def reward(self,action): # sparse rewards at particular time intervals
-        end_time = self.env_timeslot_values[-1]
-        half_time = self.env_timeslot_values[int(2*len(self.env_timeslot_values)/4)]
-        q1_time = self.env_timeslot_values[int(len(self.env_timeslot_values)/4)]
-        q3_time = self.env_timeslot_values[int(3*len(self.env_timeslot_values)/4)]
-        interval_set = set((half_time, end_time))
-        if self.RECOVERY_MODE:
-            return -1 # penalize recovery mode
+        # Actions = 10 discrete duty cycles
+        self.NO_OF_DUTY_CYCLES = 10
+        self.HFACTOR = 0.01*240/120 #<<<<<<<
+        self.DFACTOR = 0.005*240/120 #<<<<<<<
+    def reset(self, location, year, LOG_DATA=True):
+
+        # Characterize the harvester
+        self.READINGS_PER_DAY = 24
+        REQ_TIMESLOTS_PER_DAY = 120 #<<<<<<<
+        PREDICTION_HORIZON=120 #<<<<<<<
         
-        if self.time_obs in interval_set:
-            batt_log = [obs[3] for obs in self.env_log]
-            mean_day_batt = np.mean(batt_log[-len(self.env_timeslot_values):-1])
-            lowthreshold = 2*self.MIN_BATT
-            if lowthreshold<mean_day_batt<(1-lowthreshold):
-                return 1
-            else:
-                return -1
-        else:
-            return 0
-# End of sparse_v0b
+
+        self.env_harvester = csv_solar_harvester(location=location,
+                                year=year,
+                                READINGS_PER_DAY = self.READINGS_PER_DAY,
+                                SMAX=4.0, # Max GSR
+                                HENERGY_NOISE=0.1, # henergy artifical noise
+                                NORMALIZED_HMIN_THRES=1E-5, # henergy cutoff
+                                REQ_TIMESLOTS_PER_DAY=REQ_TIMESLOTS_PER_DAY, # no. of timeslots per day
+                                PREDICTION_HORIZON=PREDICTION_HORIZON, # lookahead horizon to predict energy
+                                PENERGY_NOISE=0.005)
+        self.env_timeslot_values = self.env_harvester.time_slots
+        self.ENV_LIFETIME = self.env_harvester.no_of_days
+        
+        # Characterize the battery
+        self.BINIT = 0.7
+        self.BEFF  = 1.0
+        self.env_battery = battery(self.BINIT,self.BEFF)
+
+        # Characterize utility generator
+        
+        # Characterize channel fading
+        
+        # Data logging variables
+        self.LOG_DATA = LOG_DATA # Flag to whether or not log data
+        self.env_log = [] # record all values in the environment
+        self.action_log = [] # record all actions sent to the environment
+        self.eno_log = []
+        
+        # Observation variables
+        self.time_obs = None
+        self.henergy_obs = None
+        self.penergy_obs = None
+        self.benergy_obs = None
+        
+        # Environment Flags
+        self.RECOVERY_MODE = False # battery is recovering to BINIT from complete discharge & node is suspended
+        
+
+        # Get observation
+        self.time_obs, self.henergy_obs, self.penergy_obs, DAY_END, HARVESTER_END = self.env_harvester.step()
+        self.benergy_obs = self.env_battery.get_batt_state()
+        
+        self.obs = (self.time_obs/self.READINGS_PER_DAY, 
+                    self.henergy_obs, 
+                    self.penergy_obs, 
+                    self.benergy_obs)
+        if self.LOG_DATA:
+            self.env_log.append(self.obs)
+        return np.array(self.obs)
+# End of eno_v0_T120
 ########################################################
 ########################################################
-class sparse_v0c(eno_v0):
+class eno_v0_T24(eno_v0_T240): # 24 timesteps in one day
+    def __init__(self):
+        super(eno_v0_T24, self).__init__()
+        
+        # Actions = 10 discrete duty cycles
+        self.NO_OF_DUTY_CYCLES = 10
+        self.action_space = spaces.Discrete(n=self.NO_OF_DUTY_CYCLES)
+
+        # Observation = [time, h_energy, p_energy, b_energy]
+        self.observation_space = spaces.Box(low=0, 
+                                            high=1, 
+                                            shape=(4,))
+        
+        self.MIN_BATT = 0.1
+        self.MIN_DC = 1/self.NO_OF_DUTY_CYCLES # Minimum duty cycle
+
+        
+#         self.HFACTOR = 0.01 # Default
+#         self.DFACTOR = 0.005 # Default
+        self.HFACTOR = 0.01*240/24 #<<<<<<<
+        self.DFACTOR = 0.005*240/24 #<<<<<<<
+        
+    def reset(self, location, year, LOG_DATA=True):
+
+        # Characterize the harvester
+        self.READINGS_PER_DAY = 24
+        REQ_TIMESLOTS_PER_DAY = 24 #<<<<<<<
+        PREDICTION_HORIZON=24 #<<<<<<<
+        
+
+        self.env_harvester = csv_solar_harvester(location=location,
+                                year=year,
+                                READINGS_PER_DAY = self.READINGS_PER_DAY,
+                                SMAX=4.0, # Max GSR
+                                HENERGY_NOISE=0.1, # henergy artifical noise
+                                NORMALIZED_HMIN_THRES=1E-5, # henergy cutoff
+                                REQ_TIMESLOTS_PER_DAY=REQ_TIMESLOTS_PER_DAY, # no. of timeslots per day
+                                PREDICTION_HORIZON=PREDICTION_HORIZON, # lookahead horizon to predict energy
+                                PENERGY_NOISE=0.005)
+        self.env_timeslot_values = self.env_harvester.time_slots
+        self.ENV_LIFETIME = self.env_harvester.no_of_days
+        
+        # Characterize the battery
+        self.BINIT = 0.7
+        self.BEFF  = 1.0
+        self.env_battery = battery(self.BINIT,self.BEFF)
+
+        # Characterize utility generator
+        
+        # Characterize channel fading
+        
+        # Data logging variables
+        self.LOG_DATA = LOG_DATA # Flag to whether or not log data
+        self.env_log = [] # record all values in the environment
+        self.action_log = [] # record all actions sent to the environment
+        self.eno_log = []
+        
+        # Observation variables
+        self.time_obs = None
+        self.henergy_obs = None
+        self.penergy_obs = None
+        self.benergy_obs = None
+        
+        # Environment Flags
+        self.RECOVERY_MODE = False # battery is recovering to BINIT from complete discharge & node is suspended
+        
+
+        # Get observation
+        self.time_obs, self.henergy_obs, self.penergy_obs, DAY_END, HARVESTER_END = self.env_harvester.step()
+        self.benergy_obs = self.env_battery.get_batt_state()
+        
+        self.obs = (self.time_obs/self.READINGS_PER_DAY, 
+                    self.henergy_obs, 
+                    self.penergy_obs, 
+                    self.benergy_obs)
+        if self.LOG_DATA:
+            self.env_log.append(self.obs)
+        return np.array(self.obs)
+# End of eno_v0_T24
+########################################################
+########################################################
+# Sparse Rewards 
+# derived from eno_v0_TXX()
+# HFACTOR = 0.01   * timeconstant
+# DFACTOR = 0.005 * timeconstant 
+########################################################
+#
+########################################################
+########################################################
+class sparse_v0_T24_4x(eno_v0_T24): # 4 rewards per day,24 timesteps per day
     def reward(self,action): # sparse rewards at particular time intervals
         end_time = self.env_timeslot_values[-1]
         half_time = self.env_timeslot_values[int(2*len(self.env_timeslot_values)/4)]
@@ -697,85 +951,113 @@ class sparse_v0c(eno_v0):
                 return -1
         else:
             return 0
-# End of sparse_v0c
-########################################################
-class eno_v0a(eno_v0):
-    """An ambient environment simulator for OpenAI gym."""
-    metadata = {'render.modes': ['human']}
-    
-    def __init__(self):
-        super(eno_v0a, self).__init__()
-        
-        # Actions = 10 discrete duty cycles
-        self.NO_OF_DUTY_CYCLES = 10
-        self.action_space = spaces.Discrete(n=self.NO_OF_DUTY_CYCLES)
-
-        # Observation = [time, h_energy, p_energy, b_energy]
-        self.observation_space = spaces.Box(low=0, 
-                                            high=1, 
-                                            shape=(4,))
-        
-        self.MIN_BATT = 0.1
-        self.MIN_DC = 1/self.NO_OF_DUTY_CYCLES # Minimum duty cycle
-
-        
-#         self.HFACTOR = 0.01 # Default
-#         self.DFACTOR = 0.005 # Default
-        self.HFACTOR = 0.02 
-        self.DFACTOR = 0.005
-# End of eno_v0a
+# End of sparse_v0_T24_4x
 ########################################################
 ########################################################
-class eno_v0b(eno_v0):
-    """An ambient environment simulator for OpenAI gym."""
-    metadata = {'render.modes': ['human']}
-    
-    def __init__(self):
-        super(eno_v0b, self).__init__()
+class sparse_v0_T24_1x(eno_v0_T24): # 1 reward per day, 24 timesteps per day
+    def reward(self,action): # sparse rewards at particular time intervals
+        end_time = self.env_timeslot_values[-1]
+        if self.RECOVERY_MODE:
+            return -1 # penalize recovery mode
         
-        # Actions = 10 discrete duty cycles
-        self.NO_OF_DUTY_CYCLES = 10
-        self.action_space = spaces.Discrete(n=self.NO_OF_DUTY_CYCLES)
-
-        # Observation = [time, h_energy, p_energy, b_energy]
-        self.observation_space = spaces.Box(low=0, 
-                                            high=1, 
-                                            shape=(4,))
-        
-        self.MIN_BATT = 0.1
-        self.MIN_DC = 1/self.NO_OF_DUTY_CYCLES # Minimum duty cycle
-
-        
-#         self.HFACTOR = 0.01 # Default
-#         self.DFACTOR = 0.005 # Default
-        self.HFACTOR = 0.01 
-        self.DFACTOR = 0.005
-# End of eno_v0b
+        if self.time_obs == end_time:
+            batt_log = [obs[3] for obs in self.env_log]
+            mean_day_batt = np.mean(batt_log[-len(self.env_timeslot_values):-1])
+            lowthreshold = 2*self.MIN_BATT
+            if lowthreshold<mean_day_batt<(1-lowthreshold):
+                return 1
+            else:
+                return -1
+        else:
+            return 0
+# End of sparse_v0_T24_1x
 ########################################################
 ########################################################
-class eno_v0c(eno_v0):
-    """An ambient environment simulator for OpenAI gym."""
-    metadata = {'render.modes': ['human']}
-    
-    def __init__(self):
-        super(eno_v0c, self).__init__()
+class sparse_v0_T120_4x(eno_v0_T120): # 4 rewards per day, 120 timesteps per day
+    def reward(self,action): # sparse rewards at particular time intervals
+        end_time = self.env_timeslot_values[-1]
+        half_time = self.env_timeslot_values[int(2*len(self.env_timeslot_values)/4)]
+        q1_time = self.env_timeslot_values[int(len(self.env_timeslot_values)/4)]
+        q3_time = self.env_timeslot_values[int(3*len(self.env_timeslot_values)/4)]
+        interval_set = set((q1_time, half_time, q3_time, end_time))
+        if self.RECOVERY_MODE:
+            return -1 # penalize recovery mode
         
-        # Actions = 10 discrete duty cycles
-        self.NO_OF_DUTY_CYCLES = 5 #<<<<<
-        self.action_space = spaces.Discrete(n=self.NO_OF_DUTY_CYCLES)
-
-        # Observation = [time, h_energy, p_energy, b_energy]
-        self.observation_space = spaces.Box(low=0, 
-                                            high=1, 
-                                            shape=(4,))
+        if self.time_obs in interval_set:
+            batt_log = [obs[3] for obs in self.env_log]
+            mean_day_batt = np.mean(batt_log[-len(self.env_timeslot_values):-1])
+            lowthreshold = 2*self.MIN_BATT
+            if lowthreshold<mean_day_batt<(1-lowthreshold):
+                return 1
+            else:
+                return -1
+        else:
+            return 0
+# End of sparse_v0_T120_4x
+########################################################
+########################################################
+class sparse_v0_T120_1x(eno_v0_T120): # 1 reward per day, 120 timesteps per day
+    def reward(self,action): # sparse rewards at particular time intervals
+        end_time = self.env_timeslot_values[-1]
+        if self.RECOVERY_MODE:
+            return -1 # penalize recovery mode
         
-        self.MIN_BATT = 0.1
-        self.MIN_DC = 1/self.NO_OF_DUTY_CYCLES # Minimum duty cycle
-
+        if self.time_obs == end_time:
+            batt_log = [obs[3] for obs in self.env_log]
+            mean_day_batt = np.mean(batt_log[-len(self.env_timeslot_values):-1])
+            lowthreshold = 2*self.MIN_BATT
+            if lowthreshold<mean_day_batt<(1-lowthreshold):
+                return 1
+            else:
+                return -1
+        else:
+            return 0
+# End of sparse_v0_T120_1x
+########################################################
+########################################################
+class sparse_v0_T240_4x(eno_v0_T240):  # 3 rewards per day,240 timesteps per day
+    def reward(self,action): # sparse rewards at particular time intervals
+        end_time = self.env_timeslot_values[-1]
+        half_time = self.env_timeslot_values[int(2*len(self.env_timeslot_values)/4)]
+        q1_time = self.env_timeslot_values[int(len(self.env_timeslot_values)/4)]
+        q3_time = self.env_timeslot_values[int(3*len(self.env_timeslot_values)/4)]
+        interval_set = set((q1_time, half_time, q3_time, end_time))
+        if self.RECOVERY_MODE:
+            return -1 # penalize recovery mode
         
-#         self.HFACTOR = 0.01 # Default
-#         self.DFACTOR = 0.005 # Default
-        self.HFACTOR = 0.01 
-        self.DFACTOR = 0.005
-# End of eno_v0b
+        if self.time_obs in interval_set:
+            batt_log = [obs[3] for obs in self.env_log]
+            mean_day_batt = np.mean(batt_log[-len(self.env_timeslot_values):-1])
+            lowthreshold = 2*self.MIN_BATT
+            if lowthreshold<mean_day_batt<(1-lowthreshold):
+                return 1
+            else:
+                return -1
+        else:
+            return 0
+# End of sparse_v0_T240_4x
+########################################################
+########################################################
+class sparse_v0_T240_1x(eno_v0_T240): # 1 reward per day,240 timesteps per day
+    def reward(self,action): # sparse rewards at particular time intervals
+        end_time = self.env_timeslot_values[-1]
+        half_time = self.env_timeslot_values[int(2*len(self.env_timeslot_values)/4)]
+        q1_time = self.env_timeslot_values[int(len(self.env_timeslot_values)/4)]
+        q3_time = self.env_timeslot_values[int(3*len(self.env_timeslot_values)/4)]
+        interval_set = set((end_time))
+        if self.RECOVERY_MODE:
+            return -1 # penalize recovery mode
+        
+        if self.time_obs in interval_set:
+            batt_log = [obs[3] for obs in self.env_log]
+            mean_day_batt = np.mean(batt_log[-len(self.env_timeslot_values):-1])
+            lowthreshold = 2*self.MIN_BATT
+            if lowthreshold<mean_day_batt<(1-lowthreshold):
+                return 1
+            else:
+                return -1
+        else:
+            return 0
+# End of sparse_v0_T240_1x
+########################################################
 ########################################################
