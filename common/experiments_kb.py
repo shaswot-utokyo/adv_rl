@@ -1,5 +1,23 @@
 EXP_PARAMS = {
 #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+# utility_v0_T24, and gamma
+    'utility_v0_T240-g90': { 
+        'env_name':         "utility_v0_T240",
+        'double_q':         True,
+        'dueling':          True,
+        'nn_layer_width':   32,
+        'rollout_steps':    2,        # rollout by 2hrs=2steps
+        'replay_size':      24*365*2, # 240*365*2/10,
+        'replay_initial':   24*10,    # 240*10/10,
+        'target_net_sync':  24*10,    # 240*10/10,
+        'epsilon_frames':   24*30*6,  # 240*30*6/10,
+        'epsilon_start':    1.0,
+        'epsilon_final':    0.01,
+        'learning_rate':    1E-3,
+        'gamma':            0.90, 
+        'batch_size':       32
+    },
+#>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 # sparse_v0_T24_1x, T24 and gamma
      'sparse_v0_T24_1x-g90': { 
         'env_name':         "sparse_v0_T24_1x",

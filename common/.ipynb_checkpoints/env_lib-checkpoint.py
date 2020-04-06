@@ -182,10 +182,10 @@ class night_utility_generator(object): # generates utility of data, dependent on
     def get_utility(self, time):
         assert 0<=time<24, 'Invalid time'
         if 0<=time<6 or 18<time<24:
-            utility = 1.0
+            utility = np.random.normal(loc=0.5,scale=0.1)
         else:
-            utility = 0.1
-        return utility
+            utility = np.random.normal(loc=0.2,scale=0.05)
+        return np.clip(utility,0.1,1.0 )
 # End of utility_generator class
 ########################################################
 ########################################################
