@@ -960,26 +960,26 @@ class hard_v0_T24(eno_v0_T24): # 4 rewards per day,24 timesteps per day
 # ########################################################
 #
 ########################################################
-class hard_v1_T24(eno_v0_T24): # 4 rewards per day,24 timesteps per day
-    def reward(self,action): # symmetric linear reward
+class hard_v1_T24(eno_v0_T24): # penalizes overflows also
+    def reward(self,action): # 
         if self.RECOVERY_MODE:
             return -1 # penalize recovery mode
-        elif self.benergy_obs > 0.9:
-            return 0.5
+        elif self.benergy_obs > 0.8:
+            return 0
         else:
             return 1
 # End of hard_v1_T24
 ########################################################
 # ########################################################
-# class hard_v1_T120(eno_v0_T120): # 4 rewards per day,24 timesteps per day
-#     def reward(self,action): # symmetric linear reward
-#         if self.RECOVERY_MODE:
-#             return -1 # penalize recovery mode
-#         elif self.benergy_obs > 0.9:
-#             return 0.5
-#         else:
-#             return 1
-# # End of hard_v1_T120
+class hard_v1_T120(eno_v0_T120): # penalizes overflows also
+    def reward(self,action): # 
+        if self.RECOVERY_MODE:
+            return -1 # penalize recovery mode
+        elif self.benergy_obs > 0.8:
+            return 0
+        else:
+            return 1
+# End of hard_v1_T24
 # ########################################################
 # ########################################################
 # class hard_v1_T240(eno_v0_T240): # 4 rewards per day,24 timesteps per day
