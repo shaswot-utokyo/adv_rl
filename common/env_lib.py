@@ -922,6 +922,77 @@ class eno_v0_T24(eno_v0_T240): # 24 timesteps in one day
         return np.array(self.obs)
 # End of eno_v0_T24
 ########################################################
+#
+#
+########################################################
+# Hard Rewards 
+# derived from eno_v0_TXX()
+# HFACTOR = 0.01   * timeconstant
+# DFACTOR = 0.005 * timeconstant 
+########################################################
+#
+########################################################
+class hard_v0_T24(eno_v0_T24): # 4 rewards per day,24 timesteps per day
+    def reward(self,action): # symmetric linear reward
+        if self.RECOVERY_MODE:
+            return -1 # penalize recovery mode
+        else:
+            return 1
+# End of hard_v0_T24
+########################################################
+# ########################################################
+# class hard_v0_T120(eno_v0_T120): # 4 rewards per day,24 timesteps per day
+#     def reward(self,action): # symmetric linear reward
+#         if self.RECOVERY_MODE:
+#             return -1 # penalize recovery mode
+#         else:
+#             return 1
+# # End of hard_v0_T120
+# ########################################################
+# ########################################################
+# class hard_v0_T240(eno_v0_T240): # 4 rewards per day,24 timesteps per day
+#     def reward(self,action): # symmetric linear reward
+#         if self.RECOVERY_MODE:
+#             return -1 # penalize recovery mode
+#         else:
+#             return 1
+# # End of hard_v0_T240
+# ########################################################
+#
+########################################################
+class hard_v1_T24(eno_v0_T24): # 4 rewards per day,24 timesteps per day
+    def reward(self,action): # symmetric linear reward
+        if self.RECOVERY_MODE:
+            return -1 # penalize recovery mode
+        elif self.benergy_obs > 0.9:
+            return 0.5
+        else:
+            return 1
+# End of hard_v1_T24
+########################################################
+# ########################################################
+# class hard_v1_T120(eno_v0_T120): # 4 rewards per day,24 timesteps per day
+#     def reward(self,action): # symmetric linear reward
+#         if self.RECOVERY_MODE:
+#             return -1 # penalize recovery mode
+#         elif self.benergy_obs > 0.9:
+#             return 0.5
+#         else:
+#             return 1
+# # End of hard_v1_T120
+# ########################################################
+# ########################################################
+# class hard_v1_T240(eno_v0_T240): # 4 rewards per day,24 timesteps per day
+#     def reward(self,action): # symmetric linear reward
+#         if self.RECOVERY_MODE:
+#             return -1 # penalize recovery mode
+#         elif self.benergy_obs > 0.9:
+#             return 0.5
+#         else:
+#             return 1
+# # End of hard_v1_T240
+# ########################################################
+#
 ########################################################
 # Sparse Rewards 
 # derived from eno_v0_TXX()

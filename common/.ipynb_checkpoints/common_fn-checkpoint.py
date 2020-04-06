@@ -26,7 +26,7 @@ class nstep_ExperienceBuffer:
             self.nstep_populate()
     
     def nstep_populate(self):
-        if self.buffer[-1].done or self.buffer[-1].reward<0:
+        if self.buffer[-1].done or self.buffer[-1].reward<0: # if done or reward<0 i.e., recovery mode
             # calculate all returns then clear buffer
             done = True
             last_state = self.buffer[-1].state # DUMMY. NOT REALLY USED
@@ -158,11 +158,16 @@ def display_env_log_eno(env, reward_rec, RECOVERY_rec, START_DAY=0, NO_OF_DAY_TO
     benergy_ax   = fig.add_subplot(SUBPLOTS,1,3)
     eno_perf_ax  = fig.add_subplot(SUBPLOTS,1,4)
     
+    henergy_ax.grid(which='major', axis='x', linestyle='--')
+    sense_dc_ax.grid(which='major', axis='x', linestyle='--')
+    benergy_ax.grid(which='major', axis='x', linestyle='--')
+    eno_perf_ax.grid(which='major', axis='x', linestyle='--')
+
 #     time_ax.set_ylim(0, env.READINGS_PER_DAY)
 #     henergy_ax.set_ylim(0,1)
 #     penergy_ax.set_ylim(0,1)
     benergy_ax.set_ylim(0,1)
-#     sense_dc_ax.set_ylim(-0.1,1)
+    sense_dc_ax.set_ylim(-0.1,1)
 #     reward_ax.set_ylim(-1,1)
 #     recovery_ax.set_ylim(0,1)
 #     utility_ax.set_ylim(0,1)
@@ -216,6 +221,11 @@ def display_env_log_utility(env, reward_rec, RECOVERY_rec, START_DAY=0, NO_OF_DA
     sense_dc_ax  = fig.add_subplot(SUBPLOTS,1,2)
     benergy_ax   = fig.add_subplot(SUBPLOTS,1,3)
     eno_perf_ax  = fig.add_subplot(SUBPLOTS,1,4)
+    
+    henergy_ax.grid(which='major', axis='x', linestyle='--')
+    sense_dc_ax.grid(which='major', axis='x', linestyle='--')
+    benergy_ax.grid(which='major', axis='x', linestyle='--')
+    eno_perf_ax.grid(which='major', axis='x', linestyle='--')
     
 #     time_ax.set_ylim(0, env.READINGS_PER_DAY)
 #     henergy_ax.set_ylim(0,1)

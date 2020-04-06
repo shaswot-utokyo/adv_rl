@@ -26,7 +26,7 @@ class nstep_ExperienceBuffer:
             self.nstep_populate()
     
     def nstep_populate(self):
-        if self.buffer[-1].done or self.buffer[-1].reward<0:
+        if self.buffer[-1].done or self.buffer[-1].reward<0: # if done or reward<0 i.e., recovery mode
             # calculate all returns then clear buffer
             done = True
             last_state = self.buffer[-1].state # DUMMY. NOT REALLY USED
