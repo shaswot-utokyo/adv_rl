@@ -17,3 +17,6 @@ models/
 # Folders
 experiment_notebooks/
 experiment_tblogs/
+
+# Libre Office
+.~lock.*#
