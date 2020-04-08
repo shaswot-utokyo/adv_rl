@@ -226,7 +226,405 @@ class battery(object):
         return np.clip(self.batt,0,1)
 # End of class battery
 ########################################################
+########################################################
+# Environments with UTILITY
+# Utility Worker
+########################################################
+# HFACTOR = 0.01   
+# DFACTOR = 0.005 
+########################################################
+########################################################
+class utility_worker_v0_T24(gym.Env):
+    """An ambient environment simulator for OpenAI gym."""
+    metadata = {'render.modes': ['human']}
+    
+    def __init__(self):
+        super(utility_worker_v0_T120, self).__init__()
+        
+        # Actions = 10 discrete duty cycles
+        self.NO_OF_DUTY_CYCLES = 10
+        self.action_space = spaces.Discrete(n=self.NO_OF_DUTY_CYCLES)
 
+        # Observation = [b_energy, t_energy, utility]
+        self.observation_space = spaces.Box(low=0, 
+                                            high=1, 
+                                            shape=(3,)) #<<<<<<<<<
+        
+        self.MIN_BATT = 0.1
+        self.MIN_DC = 1/self.NO_OF_DUTY_CYCLES # Minimum duty cycle
+
+        self.HFACTOR = 0.01*240/24 #<<<<<<<
+        self.DFACTOR = 0.005*240/24 #<<<<<<<
+        
+        self.levels = [0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 0.95]
+
+    def reset(self, location, year, LOG_DATA=True):
+
+        # Characterize the harvester
+        self.READINGS_PER_DAY = 24
+        REQ_TIMESLOTS_PER_DAY = 24
+        PREDICTION_HORIZON=24
+        
+
+        self.env_harvester = csv_solar_harvester(location=location,
+                                year=year,
+                                READINGS_PER_DAY = self.READINGS_PER_DAY,
+                                SMAX=4.0, # Max GSR
+                                HENERGY_NOISE=0.1, # henergy artifical noise
+                                NORMALIZED_HMIN_THRES=1E-5, # henergy cutoff
+                                REQ_TIMESLOTS_PER_DAY=REQ_TIMESLOTS_PER_DAY, # no. of timeslots per day
+                                PREDICTION_HORIZON=PREDICTION_HORIZON, # lookahead horizon to predict energy
+                                PENERGY_NOISE=0.005)
+        self.env_timeslot_values = self.env_harvester.time_slots
+        self.ENV_LIFETIME = self.env_harvester.no_of_days
+        
+        # Characterize the battery
+        self.BINIT = 0.7
+        self.BEFF  = 1.0
+        self.env_battery = battery(self.BINIT,self.BEFF)
+
+        # Characterize utility generator
+        self.utility_gen = night_utility_generator()
+        # Characterize channel fading
+        
+        # Data logging variables
+        self.LOG_DATA = LOG_DATA # Flag to whether or not log data
+        self.env_log = [] # record all values in the environment
+        self.action_log = [] # record all actions sent to the environment
+        self.eno_log = []
+        
+        # Observation variables
+        self.time_obs = None
+        self.henergy_obs = None
+        self.penergy_obs = None
+        self.benergy_obs = None
+        self.utility_obs = None #<<<<<<<<<
+        self.tenergy_obs = None
+
+        
+        # Environment Flags
+        self.RECOVERY_MODE = False # battery is recovering to BINIT from complete discharge & node is suspended
+        
+
+        # Get observation
+        self.time_obs, self.henergy_obs, self.penergy_obs, DAY_END, HARVESTER_END = self.env_harvester.step()
+        self.benergy_obs = self.env_battery.get_batt_state()
+        self.utility_obs = self.utility_gen.get_utility(self.time_obs) #<<<<<<<<<<
+        self.tenergy_obs = np.digitize(self.benergy_obs,self.levels)/10
+        self.obs = (self.benergy_obs,
+                    self.tenergy_obs,
+                    self.utility_obs) #<<<<<<<<
+        if self.LOG_DATA:
+            log_data = (self.time_obs/self.READINGS_PER_DAY, 
+                        self.henergy_obs, 
+                        self.penergy_obs, 
+                        self.benergy_obs,
+                        self.utility_obs,
+                        self.tenergy_obs)
+            self.env_log.append(log_data)
+        return np.array(self.obs)
+    
+    def step(self, action):
+        if self.benergy_obs < self.MIN_BATT: # Is battery less than a threshold?
+            self.RECOVERY_MODE = True
+        
+        if self.RECOVERY_MODE: # Is node in recovery mode?
+            self.recovery_action()
+            reward = self.reward(action)
+        else:
+            ACTION_VALID = self.verify_action(action)
+            if ACTION_VALID:
+                self.execute_action(action)
+                reward = self.reward(action)
+            else:
+                self.recovery_action()
+                reward = self.reward(action)
+        
+        next_obs, done = self.next_obs()
+        info = {}
+        
+        return np.array(next_obs), reward, done, info
+    
+    
+    def verify_action(self, action): # check if actions are valid
+        assert self.RECOVERY_MODE == False, "Action does not need to be verified in recovery mode"
+        assert 0<=action<=self.NO_OF_DUTY_CYCLES, "Invalid Action"
+        sense_dc = action/self.NO_OF_DUTY_CYCLES + self.MIN_DC
+        
+        surplus_energy = (self.henergy_obs*self.HFACTOR - (sense_dc)*self.DFACTOR)
+        if (-surplus_energy) < self.benergy_obs: # if there is sufficient energy in the battery to extract
+            return True # valid action
+        else:
+            self.RECOVERY_MODE = True # switch to recovery mode
+            return False # invalid action
+        
+            
+    def recovery_action(self):
+        assert self.RECOVERY_MODE == True, "Node is not in recovery mode"
+        self.env_battery.charge(self.henergy_obs*self.HFACTOR)
+        if self.LOG_DATA:
+            self.eno_log.append(self.henergy_obs*self.HFACTOR)
+            self.action_log.append((-1))
+    
+    def execute_action(self, action): 
+        assert self.RECOVERY_MODE==False, "Node is in recovery mode. Cannot execute action"
+        
+        sense_dc = action/self.NO_OF_DUTY_CYCLES + self.MIN_DC
+        surplus_energy = (self.henergy_obs*self.HFACTOR - (sense_dc)*self.DFACTOR)
+        
+        if surplus_energy > 0:
+            self.env_battery.charge(surplus_energy)
+        else:
+            self.env_battery.discharge(surplus_energy)
+        
+        if self.LOG_DATA:
+            self.eno_log.append(surplus_energy)
+            self.action_log.append((sense_dc))      
+        
+
+    def next_obs(self): # update all observations
+
+        self.time_obs, self.henergy_obs, self.penergy_obs, DAY_END, HARVESTER_END = self.env_harvester.step()
+        self.utility_obs = self.utility_gen.get_utility(self.time_obs) # new utility observation #<<<<<<<<<<<<
+
+        if not HARVESTER_END:
+            self.benergy_obs = self.env_battery.get_batt_state() # updated battery observation
+            if self.RECOVERY_MODE:
+                if self.benergy_obs > self.BINIT: 
+                    self.RECOVERY_MODE = False # snap out of recovery mode
+                else:
+                    self.RECOVERY_MODE = True # remain in recovery mode
+        
+        if DAY_END:
+            if self.benergy_obs < 0.5:
+                self.tenergy_obs = 0.6 + np.random.choice([-0.1,0,0.1,0.2], p=[0.4,0.3,0.2,0.1])
+            else:
+                self.tenergy_obs = 0.4 + np.random.choice([-0.1,0,0.1,0.2], p=[0.2,0.3,0.4,0.1])
+            
+        self.obs = (self.benergy_obs,
+                    self.tenergy_obs,
+                    self.utility_obs) #<<<<<<<<
+        
+        if self.LOG_DATA:
+            log_data = (self.time_obs/self.READINGS_PER_DAY, 
+                        self.henergy_obs, 
+                        self.penergy_obs, 
+                        self.benergy_obs,
+                        self.utility_obs,
+                        self.tenergy_obs)
+            self.env_log.append(log_data)
+        
+        done = HARVESTER_END
+
+        return self.obs, done
+    
+    def reward(self,action): # reward based on utility #<<<<<<<<<<
+        if self.RECOVERY_MODE:
+            return -1 # penalize recovery mode
+        else:
+            sense_dc = action/self.NO_OF_DUTY_CYCLES + self.MIN_DC
+            if sense_dc >= self.utility_obs:
+                return self.utility_obs
+            else:
+                return sense_dc *0.75
+    # End of utility_worker_v0_T240
+########################################################
+########################################################
+class utility_worker_v0_T120(gym.Env):
+    """An ambient environment simulator for OpenAI gym."""
+    metadata = {'render.modes': ['human']}
+    
+    def __init__(self):
+        super(utility_worker_v0_T120, self).__init__()
+        
+        # Actions = 10 discrete duty cycles
+        self.NO_OF_DUTY_CYCLES = 10
+        self.action_space = spaces.Discrete(n=self.NO_OF_DUTY_CYCLES)
+
+        # Observation = [b_energy, t_energy, utility]
+        self.observation_space = spaces.Box(low=0, 
+                                            high=1, 
+                                            shape=(3,)) #<<<<<<<<<
+        
+        self.MIN_BATT = 0.1
+        self.MIN_DC = 1/self.NO_OF_DUTY_CYCLES # Minimum duty cycle
+
+        self.HFACTOR = 0.01*240/120 #<<<<<<<
+        self.DFACTOR = 0.005*240/120 #<<<<<<<
+        
+        self.levels = [0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 0.95]
+
+    def reset(self, location, year, LOG_DATA=True):
+
+        # Characterize the harvester
+        self.READINGS_PER_DAY = 24
+        REQ_TIMESLOTS_PER_DAY = 120
+        PREDICTION_HORIZON=120
+        
+
+        self.env_harvester = csv_solar_harvester(location=location,
+                                year=year,
+                                READINGS_PER_DAY = self.READINGS_PER_DAY,
+                                SMAX=4.0, # Max GSR
+                                HENERGY_NOISE=0.1, # henergy artifical noise
+                                NORMALIZED_HMIN_THRES=1E-5, # henergy cutoff
+                                REQ_TIMESLOTS_PER_DAY=REQ_TIMESLOTS_PER_DAY, # no. of timeslots per day
+                                PREDICTION_HORIZON=PREDICTION_HORIZON, # lookahead horizon to predict energy
+                                PENERGY_NOISE=0.005)
+        self.env_timeslot_values = self.env_harvester.time_slots
+        self.ENV_LIFETIME = self.env_harvester.no_of_days
+        
+        # Characterize the battery
+        self.BINIT = 0.7
+        self.BEFF  = 1.0
+        self.env_battery = battery(self.BINIT,self.BEFF)
+
+        # Characterize utility generator
+        self.utility_gen = night_utility_generator()
+        # Characterize channel fading
+        
+        # Data logging variables
+        self.LOG_DATA = LOG_DATA # Flag to whether or not log data
+        self.env_log = [] # record all values in the environment
+        self.action_log = [] # record all actions sent to the environment
+        self.eno_log = []
+        
+        # Observation variables
+        self.time_obs = None
+        self.henergy_obs = None
+        self.penergy_obs = None
+        self.benergy_obs = None
+        self.utility_obs = None #<<<<<<<<<
+        self.tenergy_obs = None
+
+        
+        # Environment Flags
+        self.RECOVERY_MODE = False # battery is recovering to BINIT from complete discharge & node is suspended
+        
+
+        # Get observation
+        self.time_obs, self.henergy_obs, self.penergy_obs, DAY_END, HARVESTER_END = self.env_harvester.step()
+        self.benergy_obs = self.env_battery.get_batt_state()
+        self.utility_obs = self.utility_gen.get_utility(self.time_obs) #<<<<<<<<<<
+        self.tenergy_obs = np.digitize(self.benergy_obs,self.levels)/10
+        self.obs = (self.benergy_obs,
+                    self.tenergy_obs,
+                    self.utility_obs) #<<<<<<<<
+        if self.LOG_DATA:
+            log_data = (self.time_obs/self.READINGS_PER_DAY, 
+                        self.henergy_obs, 
+                        self.penergy_obs, 
+                        self.benergy_obs,
+                        self.utility_obs,
+                        self.tenergy_obs)
+            self.env_log.append(log_data)
+        return np.array(self.obs)
+    
+    def step(self, action):
+        if self.benergy_obs < self.MIN_BATT: # Is battery less than a threshold?
+            self.RECOVERY_MODE = True
+        
+        if self.RECOVERY_MODE: # Is node in recovery mode?
+            self.recovery_action()
+            reward = self.reward(action)
+        else:
+            ACTION_VALID = self.verify_action(action)
+            if ACTION_VALID:
+                self.execute_action(action)
+                reward = self.reward(action)
+            else:
+                self.recovery_action()
+                reward = self.reward(action)
+        
+        next_obs, done = self.next_obs()
+        info = {}
+        
+        return np.array(next_obs), reward, done, info
+    
+    
+    def verify_action(self, action): # check if actions are valid
+        assert self.RECOVERY_MODE == False, "Action does not need to be verified in recovery mode"
+        assert 0<=action<=self.NO_OF_DUTY_CYCLES, "Invalid Action"
+        sense_dc = action/self.NO_OF_DUTY_CYCLES + self.MIN_DC
+        
+        surplus_energy = (self.henergy_obs*self.HFACTOR - (sense_dc)*self.DFACTOR)
+        if (-surplus_energy) < self.benergy_obs: # if there is sufficient energy in the battery to extract
+            return True # valid action
+        else:
+            self.RECOVERY_MODE = True # switch to recovery mode
+            return False # invalid action
+        
+            
+    def recovery_action(self):
+        assert self.RECOVERY_MODE == True, "Node is not in recovery mode"
+        self.env_battery.charge(self.henergy_obs*self.HFACTOR)
+        if self.LOG_DATA:
+            self.eno_log.append(self.henergy_obs*self.HFACTOR)
+            self.action_log.append((-1))
+    
+    def execute_action(self, action): 
+        assert self.RECOVERY_MODE==False, "Node is in recovery mode. Cannot execute action"
+        
+        sense_dc = action/self.NO_OF_DUTY_CYCLES + self.MIN_DC
+        surplus_energy = (self.henergy_obs*self.HFACTOR - (sense_dc)*self.DFACTOR)
+        
+        if surplus_energy > 0:
+            self.env_battery.charge(surplus_energy)
+        else:
+            self.env_battery.discharge(surplus_energy)
+        
+        if self.LOG_DATA:
+            self.eno_log.append(surplus_energy)
+            self.action_log.append((sense_dc))      
+        
+
+    def next_obs(self): # update all observations
+
+        self.time_obs, self.henergy_obs, self.penergy_obs, DAY_END, HARVESTER_END = self.env_harvester.step()
+        self.utility_obs = self.utility_gen.get_utility(self.time_obs) # new utility observation #<<<<<<<<<<<<
+
+        if not HARVESTER_END:
+            self.benergy_obs = self.env_battery.get_batt_state() # updated battery observation
+            if self.RECOVERY_MODE:
+                if self.benergy_obs > self.BINIT: 
+                    self.RECOVERY_MODE = False # snap out of recovery mode
+                else:
+                    self.RECOVERY_MODE = True # remain in recovery mode
+        
+        if DAY_END:
+            if self.benergy_obs < 0.5:
+                self.tenergy_obs = 0.6 + np.random.choice([-0.1,0,0.1,0.2], p=[0.4,0.3,0.2,0.1])
+            else:
+                self.tenergy_obs = 0.4 + np.random.choice([-0.1,0,0.1,0.2], p=[0.2,0.3,0.4,0.1])
+            
+        self.obs = (self.benergy_obs,
+                    self.tenergy_obs,
+                    self.utility_obs) #<<<<<<<<
+        
+        if self.LOG_DATA:
+            log_data = (self.time_obs/self.READINGS_PER_DAY, 
+                        self.henergy_obs, 
+                        self.penergy_obs, 
+                        self.benergy_obs,
+                        self.utility_obs,
+                        self.tenergy_obs)
+            self.env_log.append(log_data)
+        
+        done = HARVESTER_END
+
+        return self.obs, done
+    
+    def reward(self,action): # reward based on utility #<<<<<<<<<<
+        if self.RECOVERY_MODE:
+            return -1 # penalize recovery mode
+        else:
+            sense_dc = action/self.NO_OF_DUTY_CYCLES + self.MIN_DC
+            if sense_dc >= self.utility_obs:
+                return self.utility_obs
+            else:
+                return sense_dc *0.5
+    # End of utility_worker_v0_T240
+########################################################
 
 
 

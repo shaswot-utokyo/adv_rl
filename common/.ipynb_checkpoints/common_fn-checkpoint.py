@@ -9,7 +9,21 @@ import collections
 # Replay Buffer
 Experience = collections.namedtuple('Experience', field_names=['state', 'action', 'reward', 'done', 'new_state'])
 nstepExperience = collections.namedtuple('nstepExperience', field_names=['state', 'action', 'nstep_return', 'done', 'last_state'])
+class ExperienceBuffer:
+    def __init__(self, capacity):
+        self.buffer = collections.deque(maxlen=capacity)
 
+    def __len__(self):
+        return len(self.buffer)
+
+    def append(self, experience):
+        self.buffer.append(experience)
+
+    def sample(self, batch_size):
+        indices = np.random.choice(len(self.buffer), batch_size, replace=False)
+        states, actions, rewards, dones, next_states = zip(*[self.buffer[idx] for idx in indices])
+        return np.array(states),np.array(actions), np.array(rewards, dtype=np.float32), np.array(dones, dtype=np.uint8), np.array(next_states)
+    
 class nstep_ExperienceBuffer:
     def __init__(self, capacity, nsteps, gamma):
         self.nsteps = nsteps
@@ -246,6 +260,71 @@ def display_env_log_utility(env, reward_rec, RECOVERY_rec, START_DAY=0, NO_OF_DA
     
     benergy_ax.plot(benergy_obs_rec[start_index:end_index], color='r')
     benergy_ax.plot(reward_rec[start_index:end_index],color='m', alpha=0.5)
+
+    eno_perf_ax.plot(eno_perf[start_index:end_index], color ='g')
+    eno_perf_ax.plot(RECOVERY_rec[start_index:end_index],linestyle=':')
+    plt.show()
+########################################################
+def display_env_log_utility_worker(env, reward_rec, RECOVERY_rec, START_DAY=0, NO_OF_DAY_TO_PLOT = 500):
+   # Get Environment Log
+    ################################################################
+    NO_OF_TIMESLOTS_PER_DAY = len(env.env_timeslot_values)
+    END_DAY = START_DAY + NO_OF_DAY_TO_PLOT
+
+    start_index = START_DAY*NO_OF_TIMESLOTS_PER_DAY
+    end_index = END_DAY*NO_OF_TIMESLOTS_PER_DAY
+    
+    reward_rec = np.clip(reward_rec,-0.15,1)
+    env_rec = np.array(env.env_log)
+    action_rec = np.array(env.action_log)
+    eno_perf = np.array(env.eno_log).cumsum()
+
+    time_obs_rec=env_rec[:,0]
+    henergy_obs_rec=env_rec[:,1]
+    penergy_obs_rec=env_rec[:,2]
+    benergy_obs_rec=env_rec[:,3]
+    utility_obs_rec=env_rec[:,4]
+    tenergy_obs_rec=env_rec[:,5]
+
+    sense_dc_rec = action_rec[:]
+    # Draw figure
+    ##############
+    SUBPLOTS=4
+    subplot_height  = np.ceil(12/SUBPLOTS)*SUBPLOTS
+    fig = plt.figure(figsize=[20,subplot_height])
+
+    henergy_ax   = fig.add_subplot(SUBPLOTS,1,1)
+    sense_dc_ax  = fig.add_subplot(SUBPLOTS,1,2)
+    benergy_ax   = fig.add_subplot(SUBPLOTS,1,3)
+    eno_perf_ax  = fig.add_subplot(SUBPLOTS,1,4)
+    
+    henergy_ax.grid(which='major', axis='x', linestyle='--')
+    sense_dc_ax.grid(which='major', axis='x', linestyle='--')
+    benergy_ax.grid(which='major', axis='x', linestyle='--')
+    eno_perf_ax.grid(which='major', axis='x', linestyle='--')
+    
+#     time_ax.set_ylim(0, env.READINGS_PER_DAY)
+#     henergy_ax.set_ylim(0,1)
+#     penergy_ax.set_ylim(0,1)
+    benergy_ax.set_ylim(0,1)
+    sense_dc_ax.set_ylim(-0.1,1)
+#     reward_ax.set_ylim(-1,1)
+#     recovery_ax.set_ylim(0,1)
+#     utility_ax.set_ylim(0,1)
+
+
+#     time_ax.plot(time_obs_rec[start_index:end_index])
+    henergy_ax.plot(henergy_obs_rec[start_index:end_index],color='k',linewidth=1.0,alpha=0.5)
+    henergy_ax.plot(penergy_obs_rec[start_index:end_index],linewidth=0.25)
+    
+    sense_dc_ax.plot(sense_dc_rec[start_index:end_index], alpha=0.7)
+    sense_dc_ax.plot(utility_obs_rec[start_index:end_index], color='y',linestyle='--')
+
+    
+    benergy_ax.plot(benergy_obs_rec[start_index:end_index], color='r')
+    benergy_ax.plot(reward_rec[start_index:end_index],color='m', alpha=0.5)
+    benergy_ax.plot(tenergy_obs_rec[start_index:end_index],color='r', alpha=0.5,linestyle='--')
+
 
     eno_perf_ax.plot(eno_perf[start_index:end_index], color ='g')
     eno_perf_ax.plot(RECOVERY_rec[start_index:end_index],linestyle=':')
